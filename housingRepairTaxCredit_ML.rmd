@@ -1,0 +1,29 @@
+---
+title: "People Based ML - Housing Repair Tax Credit"
+author: "Johnathan Clementi"
+date: "11/2/2021"
+output: 
+  html_document:
+    theme: journal
+    highlight: haddock
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+# Methods
+
+# Results
+
+# Discussion & Conclusions
+
+# Appendix
+### Citations
