@@ -14,12 +14,178 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE)
+
+library(caret)
+library(FNN)
+library(grid)
+library(gridExtra)
+library(htmltools)
+library(kableExtra)
+library(knitr)
+library(lubridate)
+library(plotROC)
+library(pROC)
+library(pscl)
+library(sf)
+library(spatstat)
+library(spdep)
+library(tidycensus)
+library(tidyverse)
+library(viridis)
+
+
+options(scipen =  "sf")
+options(scipen = 999)
+
+# functions
+root.dir = "https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/DATA/"
+source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
+
+palette5 <- c("#981FAC","#CB0F8B","#FF006A","#FE4C35","#FE9900")
+palette4 <- c("#981FAC","#FF006A","#FE4C35","#FE9900")
+palette2 <- c("#981FAC","#FF006A")
 ```
 
 # Introduction
 
+Data Dictionary:
+```{r}
+dataDictionary <- read.csv("dataDictionary.csv")
+
+dataDictionary %>%
+  kable()
+
+#rm(dataDictionary)
+```
+
+## Data
+```{r}
+housingSubsidy <- read.csv(paste0(root.dir,"Chapter6/housingSubsidy.csv"))
+
+housingSubsidy <- housingSubsidy %>%
+  rename(# Individual characteristics
+          indv.age = age,
+          indv.job = job,
+          indv.marital = marital,
+          indv.education = education,
+          indv.txbillInPHL = taxbill_in_phl,
+          # House characteristics
+          house.taxLien = taxLien,
+          house.mortgage = mortgage,
+          house.spent_on_repairs = spent_on_repairs,
+          # Characteristics of the campaigns
+          campaign.contact = contact,
+          campaign.month = month,
+          campaign.DayOfWk = day_of_week,
+          campaign.campaign = campaign,
+          campaign.NumDaysPC = pdays,
+          campaign.Previous = previous,
+          campaign.prev_outcome = poutcome,
+          # Economic environment factors
+          env.unemployment_rate = unemploy_rate,
+          env.cons.price.idx = cons.price.idx,
+          env.cons.conf.idx = cons.conf.idx,
+          env.inflation_rate = inflation_rate
+        ) 
+```
+
+### Exploration
+```{r}
+housingSubsidy %>%
+  dplyr::select(y, house.spent_on_repairs, env.cons.conf.idx, campaign.campaign, indv.age) %>%
+  gather(Variable, value, -y) %>%
+    ggplot(aes(y, value, fill=y)) + 
+      geom_bar(position = "dodge", stat = "summary", fun.y = "mean") + 
+      facet_wrap(~Variable, scales = "free") +
+      scale_fill_manual(values = palette2) +
+      labs(x="y", y="Value", 
+           title = "Feature associations with the likelihood of deployment of credit",
+           subtitle = "(continous outcomes)") +
+      theme(legend.position = "none")
+
+housingSubsidy %>%
+    dplyr::select(y, house.spent_on_repairs, env.cons.conf.idx, campaign.campaign, indv.age) %>%
+    gather(Variable, value, -y) %>%
+    ggplot() + 
+    geom_density(aes(value, color=y), fill = "transparent") + 
+    facet_wrap(~Variable, scales = "free") +
+    scale_fill_manual(values = palette2) +
+    labs(title = "Feature distributions took credit vs. no credit",
+         subtitle = "(continous outcomes)") 
+```
+```{r fig.width=10, fig.height= 6}
+housingSubsidy %>%
+  dplyr::select(y, indv.job, indv.marital, indv.education, campaign.contact, campaign.month, campaign.DayOfWk) %>%
+  gather(Variable, value, -y) %>%
+  count(Variable, value, y) %>%
+  ggplot(aes(value, n, fill = y)) +   
+    geom_bar(position = "dodge", stat="identity") +
+    facet_wrap(~Variable, scales="free") +
+    scale_fill_manual(values = palette2) +
+    labs(x="Churn", y="Count",
+         title = "Feature associations with the likelihood of churn",
+         subtitle = "Three category features") +
+    plotTheme() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Campaign month share
+#table(housingSubsidy$campaign.month)
+round(table(housingSubsidy$campaign.month)/sum(table(housingSubsidy$campaign.month)),2)
+
+```
+
+
 # Methods
+
+### Training and Test Sets
+```{r}
+set.seed(3456)
+trainIndex <- createDataPartition(housingSubsidy$y_numeric, p = .65,
+                                  list = FALSE,
+                                  times = 1)
+creditTrain <- housingSubsidy[ trainIndex,]
+creditTest  <- housingSubsidy[-trainIndex,]
+```
+
+### Model Estimation
+```{r}
+creditreg1 <- glm(y_numeric ~ .,
+                  data=creditTrain %>% dplyr::select(-y),
+                  family="binomial" (link="logit"))
+
+summary(creditreg1)
+
+pR2(creditreg1)[4]
+```
+```{r}
+testProbs <- data.frame(Outcome = as.factor(creditTest$y_numeric),
+                        Probs = predict(creditreg1, creditTest, type= "response"))
+head(testProbs)
+```
+
+#### Distributions of Predicted Probabilities
+```{r}
+ggplot(testProbs, aes(x = Probs, fill = as.factor(Outcome))) + 
+  geom_density() +
+  facet_grid(Outcome ~ .) +
+  scale_fill_manual(values = palette2) + xlim(0, 1) +
+  labs(x = "Credit", y = "Density of probabilities",
+       title = "Distribution of predicted probabilities by observed outcome") +
+  plotTheme() + theme(strip.text.x = element_text(size = 18),
+        legend.position = "none")
+```
+#### Confusion Matrix
+```{r}
+testProbs <- 
+  testProbs %>%
+  mutate(predOutcome  = as.factor(ifelse(testProbs$Probs > 0.5 , 1, 0)))
+
+head(testProbs)
+
+caret::confusionMatrix(testProbs$predOutcome, testProbs$Outcome, 
+                       positive = "1")
+```
+
 
 # Results
 
