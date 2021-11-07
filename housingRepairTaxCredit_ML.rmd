@@ -53,10 +53,9 @@ Data Dictionary:
 ```{r}
 dataDictionary <- read.csv("dataDictionary.csv")
 
-dataDictionary %>%
-  kable()
+# dataDictionary %>%
+#   kable()
 
-#rm(dataDictionary)
 ```
 
 ## Data
@@ -69,31 +68,40 @@ housingSubsidy <- housingSubsidy %>%
           indv.job = job,
           indv.marital = marital,
           indv.education = education,
-          indv.txbillInPHL = taxbill_in_phl,
+          indv.taxBillInPHL = taxbill_in_phl,
           # House characteristics
           house.taxLien = taxLien,
           house.mortgage = mortgage,
-          house.spent_on_repairs = spent_on_repairs,
+          house.spentOnRepairs = spent_on_repairs,
           # Characteristics of the campaigns
           campaign.contact = contact,
           campaign.month = month,
-          campaign.DayOfWk = day_of_week,
-          campaign.campaign = campaign,
-          campaign.NumDaysPC = pdays,
-          campaign.Previous = previous,
-          campaign.prev_outcome = poutcome,
+          campaign.dayOfWk = day_of_week,
+          campaign.numContacts = campaign,
+          campaign.numDaysPC = pdays,
+          campaign.prevContact = previous,
+          campaign.prevOutcome = poutcome,
           # Economic environment factors
-          env.unemployment_rate = unemploy_rate,
-          env.cons.price.idx = cons.price.idx,
-          env.cons.conf.idx = cons.conf.idx,
-          env.inflation_rate = inflation_rate
-        ) 
+          env.unemploymentRate = unemploy_rate,
+          env.consPriceIdx = cons.price.idx,
+          env.consConfIdx = cons.conf.idx,
+          env.inflationRate = inflation_rate
+        )
+
+# housingSubsidy <- housingSubsidy %>%
+#   mutate(indv.job = replace(indv.job, indv.job == "housemaid", "services"),
+#          indv.job = replace(indv.job, indv.job == "self-employed", "entrepreneur"),
+#          indv.job = replace(indv.job, indv.job == "retired", "not-working"),
+#          indv.job = replace(indv.job, indv.job == "student", "not-working"),
+#          indv.job = replace(indv.job, indv.job == "unemployed", "not-working")
+#         )
+
 ```
 
 ### Exploration
 ```{r}
 housingSubsidy %>%
-  dplyr::select(y, house.spent_on_repairs, env.cons.conf.idx, campaign.campaign, indv.age) %>%
+  dplyr::select(y, house.spentOnRepairs,env.consPriceIdx, env.consConfIdx, campaign.numContacts, indv.age) %>%
   gather(Variable, value, -y) %>%
     ggplot(aes(y, value, fill=y)) + 
       geom_bar(position = "dodge", stat = "summary", fun.y = "mean") + 
@@ -105,7 +113,7 @@ housingSubsidy %>%
       theme(legend.position = "none")
 
 housingSubsidy %>%
-    dplyr::select(y, house.spent_on_repairs, env.cons.conf.idx, campaign.campaign, indv.age) %>%
+    dplyr::select(y, house.spentOnRepairs,env.consPriceIdx, env.consConfIdx, campaign.numContacts, indv.age) %>%
     gather(Variable, value, -y) %>%
     ggplot() + 
     geom_density(aes(value, color=y), fill = "transparent") + 
@@ -116,7 +124,7 @@ housingSubsidy %>%
 ```
 ```{r fig.width=10, fig.height= 6}
 housingSubsidy %>%
-  dplyr::select(y, indv.job, indv.marital, indv.education, campaign.contact, campaign.month, campaign.DayOfWk) %>%
+  dplyr::select(y, indv.job, indv.marital, indv.education, campaign.contact, campaign.month, campaign.dayOfWk) %>%
   gather(Variable, value, -y) %>%
   count(Variable, value, y) %>%
   ggplot(aes(value, n, fill = y)) +   
@@ -131,7 +139,6 @@ housingSubsidy %>%
 # Campaign month share
 #table(housingSubsidy$campaign.month)
 round(table(housingSubsidy$campaign.month)/sum(table(housingSubsidy$campaign.month)),2)
-
 ```
 
 
@@ -149,17 +156,60 @@ creditTest  <- housingSubsidy[-trainIndex,]
 
 ### Model Estimation
 ```{r}
-creditreg1 <- glm(y_numeric ~ .,
+creditreg2 <- glm(y_numeric ~ .,
                   data=creditTrain %>% dplyr::select(-y),
                   family="binomial" (link="logit"))
 
-summary(creditreg1)
+summary(creditreg2)
 
-pR2(creditreg1)[4]
+pR2(creditreg2)[4]
 ```
 ```{r}
 testProbs <- data.frame(Outcome = as.factor(creditTest$y_numeric),
-                        Probs = predict(creditreg1, creditTest, type= "response"))
+                        Probs = predict(creditreg2, creditTest, type= "response"))
+head(testProbs)
+```
+
+#### Distributions of Predicted Probabilities
+```{r}
+ggplot(testProbs, aes(x = Probs, fill = as.factor(Outcome))) + 
+  geom_density() +
+  facet_grid(Outcome ~ .) +
+  scale_fill_manual(values = palette2) + xlim(0, 1) +
+  labs(x = "Credit", y = "Density of probabilities",
+       title = "Distribution of predicted probabilities by observed outcome") +
+  plotTheme() + theme(strip.text.x = element_text(size = 18),
+        legend.position = "none")
+```
+#### Confusion Matrix
+```{r}
+testProbs <- 
+  testProbs %>%
+  mutate(predOutcome  = as.factor(ifelse(testProbs$Probs > 0.5 , 1, 0)))
+
+head(testProbs)
+
+caret::confusionMatrix(testProbs$predOutcome, testProbs$Outcome, 
+                       positive = "1")
+```
+
+
+# Methods 2 : A honed model
+
+
+### Model Estimation
+```{r}
+creditreg2 <- glm(y_numeric ~ .,
+                  data=creditTrain %>% dplyr::select(-y, -campaign.month, -campaign.dayOfWk, -indv.job),
+                  family="binomial" (link="logit"))
+
+summary(creditreg2)
+
+pR2(creditreg2)[4]
+```
+```{r}
+testProbs <- data.frame(Outcome = as.factor(creditTest$y_numeric),
+                        Probs = predict(creditreg2, creditTest, type= "response"))
 head(testProbs)
 ```
 
