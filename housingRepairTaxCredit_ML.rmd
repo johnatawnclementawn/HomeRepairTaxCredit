@@ -18,6 +18,7 @@ knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE)
 
 library(caret)
 library(FNN)
+library(ggcorrplot)
 library(grid)
 library(gridExtra)
 library(htmltools)
@@ -85,23 +86,46 @@ housingSubsidy <- housingSubsidy %>%
           env.unemploymentRate = unemploy_rate,
           env.consPriceIdx = cons.price.idx,
           env.consConfIdx = cons.conf.idx,
-          env.inflationRate = inflation_rate
+          env.inflationRate = inflation_rate,
+        ) %>%
+  mutate(# For engineered Features
+          eng.indv.marital = indv.marital,
+          eng.indv.job = indv.job,
+          eng.indv.edu = indv.education
         )
-
-# housingSubsidy <- housingSubsidy %>%
-#   mutate(indv.job = replace(indv.job, indv.job == "housemaid", "services"),
-#          indv.job = replace(indv.job, indv.job == "self-employed", "entrepreneur"),
-#          indv.job = replace(indv.job, indv.job == "retired", "not-working"),
-#          indv.job = replace(indv.job, indv.job == "student", "not-working"),
-#          indv.job = replace(indv.job, indv.job == "unemployed", "not-working")
-#         )
+# Engineer Features
+housingSubsidy <- housingSubsidy %>%
+  mutate(eng.indv.marital = case_when(eng.indv.marital == "divorced" ~ "notMarried",
+                                  eng.indv.marital == "single" ~ "notMarried",
+                                  eng.indv.marital == "unknown" ~ "unknown",
+                                  eng.indv.marital == "married" ~ "married"
+                                  )
+         ) %>%
+  mutate(eng.indv.job = replace(eng.indv.job, eng.indv.job == "housemaid", "services"),
+         eng.indv.job = replace(eng.indv.job, eng.indv.job == "self-employed", "entrepreneur"),
+         eng.indv.job = replace(eng.indv.job, eng.indv.job == "retired", "notWorking"),
+         eng.indv.job = replace(eng.indv.job, eng.indv.job == "student", "notWorking"),
+         eng.indv.job = replace(eng.indv.job, eng.indv.job == "unemployed", "notWorking"),
+         eng.indv.job = replace(eng.indv.job, eng.indv.job == "admin.", "admin")
+        ) %>%
+  mutate(eng.indv.edu = case_when(eng.indv.edu == "illiterate" ~ "HS_andBelow",
+                                    eng.indv.edu == "basic.4y" ~ "HS_andBelow",
+                                    eng.indv.edu == "basic.6y" ~ "HS_andBelow",
+                                    eng.indv.edu == "basic.9y" ~ "HS_andBelow",
+                                    eng.indv.edu == "high.school" ~ "HS_andBelow",
+                                    eng.indv.edu == "professional.course" ~ "higherEd",
+                                    eng.indv.edu == "university.degree" ~ "higherEd",
+                                    eng.indv.edu == "unknown" ~ "unknown"
+                                    )
+         ) %>%
+  mutate(campaign.dayMonth = paste0(campaign.dayOfWk, "_", campaign.month))
 
 ```
 
 ### Exploration
 ```{r}
 housingSubsidy %>%
-  dplyr::select(y, house.spentOnRepairs,env.consPriceIdx, env.consConfIdx, campaign.numContacts, indv.age) %>%
+  dplyr::select(y, house.spentOnRepairs,env.consPriceIdx, env.consConfIdx, campaign.numContacts, campaign.numDaysPC, indv.age) %>%
   gather(Variable, value, -y) %>%
     ggplot(aes(y, value, fill=y)) + 
       geom_bar(position = "dodge", stat = "summary", fun.y = "mean") + 
@@ -113,7 +137,7 @@ housingSubsidy %>%
       theme(legend.position = "none")
 
 housingSubsidy %>%
-    dplyr::select(y, house.spentOnRepairs,env.consPriceIdx, env.consConfIdx, campaign.numContacts, indv.age) %>%
+    dplyr::select(y, house.spentOnRepairs,env.consPriceIdx, env.consConfIdx, campaign.numContacts, campaign.numDaysPC, indv.age) %>%
     gather(Variable, value, -y) %>%
     ggplot() + 
     geom_density(aes(value, color=y), fill = "transparent") + 
@@ -122,9 +146,9 @@ housingSubsidy %>%
     labs(title = "Feature distributions took credit vs. no credit",
          subtitle = "(continous outcomes)") 
 ```
-```{r fig.width=10, fig.height= 6}
+```{r fig.width=10, fig.height= 10}
 housingSubsidy %>%
-  dplyr::select(y, indv.job, indv.marital, indv.education, campaign.contact, campaign.month, campaign.dayOfWk) %>%
+  dplyr::select(y, indv.job, indv.marital, indv.education, campaign.contact, campaign.month, campaign.dayOfWk, campaign.dayMonth, house.mortgage, house.taxLien) %>%
   gather(Variable, value, -y) %>%
   count(Variable, value, y) %>%
   ggplot(aes(value, n, fill = y)) +   
@@ -138,7 +162,73 @@ housingSubsidy %>%
 
 # Campaign month share
 #table(housingSubsidy$campaign.month)
-round(table(housingSubsidy$campaign.month)/sum(table(housingSubsidy$campaign.month)),2)
+#round(table(housingSubsidy$campaign.month)/sum(table(housingSubsidy$campaign.month)),2)
+```
+
+```{r correlationMatrix}
+numericVars <- housingSubsidy %>% 
+  select(where(is.numeric)) %>%
+  select(-X) %>%
+  na.omit()
+
+
+ggcorrplot(
+  round(cor(numericVars), 1), 
+  p.mat = cor_pmat(numericVars),
+  colors = c("#FA7800", "white", "#25CB10"),
+  type="lower",
+  insig = "blank") +  
+    labs(title = "Correlation across numeric variables")
+
+
+#trying to find variables that have a correlation value between 0.5 and -0.5
+res <- as.data.frame(cor(numericVars)) %>%
+  rownames_to_column()
+
+#pivot longer and sort through list 
+posCor <- res %>%
+  select(!c("house.spentOnRepairs","y_numeric")) %>%
+  pivot_longer(2:(ncol(res)-2)) %>%
+  group_by(value) %>%
+  arrange(desc(value)) %>%
+  filter(value >= 0.1 & value <=0.6)
+
+  
+
+negCor <- res %>%
+  select(!c("house.spentOnRepairs","y_numeric")) %>%
+  pivot_longer(2:(ncol(res)-2)) %>%
+  group_by(value) %>%
+  arrange(desc(value)) %>%
+  filter(value >= -0.6 & value <= -0.1)
+
+corlist <- bind_rows(posCor,negCor)
+
+corlist <- corlist %>%
+  group_by(value) %>%
+  arrange(desc(value))
+
+#all odd numbers between 1 and 80
+# Removes duplicates pairs that come from correlation matrix
+keep <- c(1:nrow(corlist))
+keep <- which(keep %% 2 == 1)
+
+corlist <- corlist %>%
+             slice(keep)
+
+# includes all variables correlated with y_numeric
+ynumCorlist <- corlist %>%
+  filter(rowname == "y_numeric")
+
+keep <- ynumCorlist$name
+
+# categorical <- colnames(studentData %>%
+#   select(where(is.factor)) %>%
+#     st_drop_geometry())
+# 
+# 
+# categorical <- c("Zip","District","price")
+# keep <- append(keep, categorical)
 ```
 
 
@@ -167,7 +257,7 @@ pR2(creditreg2)[4]
 ```{r}
 testProbs <- data.frame(Outcome = as.factor(creditTest$y_numeric),
                         Probs = predict(creditreg2, creditTest, type= "response"))
-head(testProbs)
+#head(testProbs)
 ```
 
 #### Distributions of Predicted Probabilities
@@ -187,7 +277,7 @@ testProbs <-
   testProbs %>%
   mutate(predOutcome  = as.factor(ifelse(testProbs$Probs > 0.5 , 1, 0)))
 
-head(testProbs)
+#head(testProbs)
 
 caret::confusionMatrix(testProbs$predOutcome, testProbs$Outcome, 
                        positive = "1")
@@ -200,7 +290,7 @@ caret::confusionMatrix(testProbs$predOutcome, testProbs$Outcome,
 ### Model Estimation
 ```{r}
 creditreg2 <- glm(y_numeric ~ .,
-                  data=creditTrain %>% dplyr::select(-y, -campaign.month, -campaign.dayOfWk, -indv.job),
+                  data=creditTrain %>% dplyr::select(-y, -campaign.month, -campaign.dayOfWk, -indv.job, -house.taxLien),
                   family="binomial" (link="logit"))
 
 summary(creditreg2)
@@ -210,19 +300,32 @@ pR2(creditreg2)[4]
 ```{r}
 testProbs <- data.frame(Outcome = as.factor(creditTest$y_numeric),
                         Probs = predict(creditreg2, creditTest, type= "response"))
-head(testProbs)
+#head(testProbs)
 ```
 
-#### Distributions of Predicted Probabilities
-```{r}
-ggplot(testProbs, aes(x = Probs, fill = as.factor(Outcome))) + 
+# Comparison
+
+### Distributions of Predicted Probabilities
+```{r, fig.height=8, fig.width=10}
+grid.arrange(nrow = 2,
+  ggplot(testProbs, aes(x = Probs, fill = as.factor(Outcome))) + 
   geom_density() +
   facet_grid(Outcome ~ .) +
   scale_fill_manual(values = palette2) + xlim(0, 1) +
   labs(x = "Credit", y = "Density of probabilities",
-       title = "Distribution of predicted probabilities by observed outcome") +
+       title = "Distribution of predicted probabilities by observed outcome\nKitchen Sink model") +
   plotTheme() + theme(strip.text.x = element_text(size = 18),
-        legend.position = "none")
+        legend.position = "none"),
+  
+  ggplot(testProbs, aes(x = Probs, fill = as.factor(Outcome))) + 
+    geom_density() +
+    facet_grid(Outcome ~ .) +
+    scale_fill_manual(values = palette2) + xlim(0, 1) +
+    labs(x = "Credit", y = "Density of probabilities",
+         title = "Distribution of predicted probabilities by observed outcome\nHoned Model") +
+    plotTheme() + theme(strip.text.x = element_text(size = 18),
+          legend.position = "none")
+)
 ```
 #### Confusion Matrix
 ```{r}
@@ -230,7 +333,7 @@ testProbs <-
   testProbs %>%
   mutate(predOutcome  = as.factor(ifelse(testProbs$Probs > 0.5 , 1, 0)))
 
-head(testProbs)
+#head(testProbs)
 
 caret::confusionMatrix(testProbs$predOutcome, testProbs$Outcome, 
                        positive = "1")
