@@ -379,24 +379,98 @@ grid.arrange(nrow = 2,
           legend.position = "none")
 )
 ```
-#### Confusion Matrix
+### Confusion Matrix
 ```{r}
 testProbs_Ksink <- testProbs_Ksink %>%
   mutate(predOutcome  = as.factor(ifelse(testProbs_Ksink$Probs > 0.5 , 1, 0)))
 
 #head(testProbs_Ksink)
 
+print('Kitchen Sink Model')
 caret::confusionMatrix(testProbs_Ksink$predOutcome, testProbs_Ksink$Outcome, 
                        positive = "1")
+
 
 testProbs_honed <- testProbs_honed %>%
   mutate(predOutcome  = as.factor(ifelse(testProbs_honed$Probs > 0.5 , 1, 0)))
 
 #head(testProbs_honed)
 
+print('Honed Model')
 caret::confusionMatrix(testProbs_honed$predOutcome, testProbs_honed$Outcome, 
                        positive = "1")
 ```
+
+### ROC Curves
+"The Receiver Operating Characteristic Curve or ROC Curve is useful because it visualizes trade-offs for two important confusion metrics, while also providing a single goodness of fit indicator"(Steif, 2021).
+
+```{r fig.width=, message=FALSE, warning=FALSE}
+grid.arrange(ncol = 2,
+  ggplot(testProbs_Ksink, aes(d = as.numeric(testProbs_Ksink$Outcome), m = Probs)) +
+    geom_roc(n.cuts = 50, labels = FALSE, colour = "#FE9900") +
+    style_roc(theme = theme_grey) +
+    geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
+    labs(title = "ROC Curve - Kitchen Sink Model"),
+  ggplot(testProbs_honed, aes(d = as.numeric(testProbs_honed$Outcome), m = Probs)) +
+    geom_roc(n.cuts = 50, labels = FALSE, colour = "#FE9900") +
+    style_roc(theme = theme_grey) +
+    geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
+    labs(title = "ROC Curve - Honed Model")
+)
+
+paste("The area under the curve is:", round(pROC::auc(testProbs_Ksink$Outcome, testProbs_Ksink$Probs),4),"for the Kitchen Sink model")
+paste("The area under the curve is:", round(pROC::auc(testProbs_honed$Outcome, testProbs_honed$Probs),4),"for the Honed model")
+```
+
+
+### Cross Validation
+```{r}
+ctrl <- trainControl(method = "cv", number = 100, classProbs=TRUE, summaryFunction=twoClassSummary)
+
+nonEngineered <- housingSubsidy %>% dplyr::select(-starts_with("eng"))
+
+cvFit_ks <- train(y ~ ., data=nonEngineered, 
+                method="glm", family="binomial",
+                metric="ROC", trControl = ctrl)
+
+cvFit_hnd <- train(y ~ ., data=housingSubsidy %>% dplyr::select(y, starts_with("eng"), 
+                                                     -starts_with("indv"), -starts_with("house"), 
+                                                     -campaignCols), 
+                method="glm", family="binomial",
+                metric="ROC", trControl = ctrl)
+
+
+cvFit_ks
+cvFit_hnd
+
+```
+
+#### Visualizing Cross Validation
+```{r fig.height= 10}
+createGOF <- function(cv, title) {
+plot <- dplyr::select(cv$resample, -Resample) %>%
+          gather(metric, value) %>%
+          left_join(gather(cv$results[2:4], metric, mean)) %>%
+          ggplot(aes(value)) + 
+            geom_histogram(bins=35, fill = "#FF006A") +
+            facet_wrap(~metric) +
+            geom_vline(aes(xintercept = mean), colour = "#981FAC", linetype = 3, size = 1.5) +
+            scale_x_continuous(limits = c(0, 1)) +
+            labs(x="Goodness of Fit", y="Count", title="CV Goodness of Fit Metrics",
+                 subtitle = paste(title, "| Across-fold mean reprented as dotted lines")) +
+            plotTheme()
+
+return(plot)
+}
+
+GOF_ks <- createGOF(cvFit_ks, 'Kitchen sink model')
+GOF_hnd <- createGOF(cvFit_hnd, 'Honed model')
+
+grid.arrange(nrow=2, GOF_ks, GOF_hnd)
+
+
+```
+
 
 # Discussion & Conclusions
 
