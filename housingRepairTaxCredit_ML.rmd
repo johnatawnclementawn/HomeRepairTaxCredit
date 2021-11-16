@@ -87,39 +87,7 @@ housingSubsidy <- housingSubsidy %>%
           env.consPriceIdx = cons.price.idx,
           env.consConfIdx = cons.conf.idx,
           env.inflationRate = inflation_rate,
-        ) %>%
-  mutate(# For engineered Features
-          eng.indv.marital = indv.marital,
-          eng.indv.job = indv.job,
-          eng.indv.edu = indv.education
-        )
-# Engineer Features
-housingSubsidy <- housingSubsidy %>%
-  mutate(eng.indv.marital = case_when(eng.indv.marital == "divorced" ~ "notMarried",
-                                  eng.indv.marital == "single" ~ "notMarried",
-                                  eng.indv.marital == "unknown" ~ "unknown",
-                                  eng.indv.marital == "married" ~ "married"
-                                  )
-         ) %>%
-  mutate(eng.indv.job = replace(eng.indv.job, eng.indv.job == "housemaid", "services"),
-         eng.indv.job = replace(eng.indv.job, eng.indv.job == "self-employed", "entrepreneur"),
-         eng.indv.job = replace(eng.indv.job, eng.indv.job == "retired", "notWorking"),
-         eng.indv.job = replace(eng.indv.job, eng.indv.job == "student", "notWorking"),
-         eng.indv.job = replace(eng.indv.job, eng.indv.job == "unemployed", "notWorking"),
-         eng.indv.job = replace(eng.indv.job, eng.indv.job == "admin.", "admin")
-        ) %>%
-  mutate(eng.indv.edu = case_when(eng.indv.edu == "illiterate" ~ "HS_andBelow",
-                                    eng.indv.edu == "basic.4y" ~ "HS_andBelow",
-                                    eng.indv.edu == "basic.6y" ~ "HS_andBelow",
-                                    eng.indv.edu == "basic.9y" ~ "HS_andBelow",
-                                    eng.indv.edu == "high.school" ~ "HS_andBelow",
-                                    eng.indv.edu == "professional.course" ~ "higherEd",
-                                    eng.indv.edu == "university.degree" ~ "higherEd",
-                                    eng.indv.edu == "unknown" ~ "unknown"
-                                    )
-         ) %>%
-  mutate(campaign.dayMonth = paste0(campaign.dayOfWk, "_", campaign.month))
-
+        ) 
 ```
 
 ### Exploration
@@ -148,11 +116,11 @@ housingSubsidy %>%
 ```
 ```{r fig.width=10, fig.height= 10}
 housingSubsidy %>%
-  dplyr::select(y, indv.job, indv.marital, indv.education, campaign.contact, campaign.month, campaign.dayOfWk, campaign.dayMonth, house.mortgage, house.taxLien) %>%
+  dplyr::select(y, indv.job, indv.marital, indv.education, campaign.contact, campaign.month, campaign.dayOfWk, house.mortgage, house.taxLien) %>%
   gather(Variable, value, -y) %>%
   count(Variable, value, y) %>%
   ggplot(aes(value, n, fill = y)) +   
-    geom_bar(position = "dodge", stat="identity") +
+    geom_bar(position = "fill", stat="identity") +
     facet_wrap(~Variable, scales="free") +
     scale_fill_manual(values = palette2) +
     labs(x="Churn", y="Count",
@@ -231,6 +199,86 @@ keep <- ynumCorlist$name
 # keep <- append(keep, categorical)
 ```
 
+### Engineering Features
+```{r}
+  
+# # Identifying which variales to transform:
+# yes <- housingSubsidy %>% filter(y_numeric == 1)
+# 
+# #Number of contacts for current campaign
+# table(yes$campaign.numContacts)
+# table(housingSubsidy$campaign.numContacts)
+# # Most indv taking subsidy were contacted 5 or less times
+# 
+# # Age of indv
+# table(yes$indv.age)
+# table(housingSubsidy$indv.age)
+# # Most indv taking subsidy were between 25 and 60
+# 
+# # Indv education
+# temp <- housingSubsidy %>% filter(indv.education != "illiterate")
+# table(temp$indv.education)
+# table(yes$indv.education)/table(temp$indv.education)
+# # People with HS degree or higher had at least a 10% chance of taking the subsidy
+# 
+# # Previous Outcome
+# temp <- housingSubsidy %>% mutate(campaign.prevOutcome = case_when(campaign.prevOutcome == "failure" ~ 0,
+#                                      campaign.prevOutcome == "nonexistent" ~ 0,
+#                                      campaign.prevOutcome == "success" ~ 1
+#                                      ))
+# yes <- yes %>% mutate(campaign.prevOutcome = case_when(campaign.prevOutcome == "failure" ~ 0,
+#                                      campaign.prevOutcome == "nonexistent" ~ 0,
+#                                      campaign.prevOutcome == "success" ~ 1
+#                                      ))
+# table(yes$campaign.prevOutcome)
+# table(temp$campaign.prevOutcome)
+# table(yes$campaign.prevOutcome)/table(temp$campaign.prevOutcome)
+# # People that took the subsidy previously are 64% likely to take the subsidy again
+
+
+# Engineer Features based on findings from code above
+housingSubsidy <- housingSubsidy %>%
+  mutate(eng.indv.job = indv.job) %>%# For engineered Features
+  mutate(eng.indv.marital = case_when(indv.marital == "divorced" ~ "notMarried",
+                                  indv.marital == "single" ~ "notMarried",
+                                  indv.marital == "unknown" ~ "unknown",
+                                  indv.marital == "married" ~ "married"
+                                  )
+         ) %>%
+  mutate(eng.indv.job = replace(eng.indv.job, eng.indv.job == "housemaid", "services"),
+         eng.indv.job = replace(eng.indv.job, eng.indv.job == "self-employed", "entrepreneur"),
+         eng.indv.job = replace(eng.indv.job, eng.indv.job == "retired", "notWorking"),
+         eng.indv.job = replace(eng.indv.job, eng.indv.job == "student", "notWorking"),
+         eng.indv.job = replace(eng.indv.job, eng.indv.job == "unemployed", "notWorking"),
+         eng.indv.job = replace(eng.indv.job, eng.indv.job == "admin.", "admin")
+        ) %>%
+  mutate(eng.indv.edu = case_when(indv.education == "illiterate" ~ "BelowHS",
+                                    indv.education == "basic.4y" ~ "BelowHS",
+                                    indv.education == "basic.6y" ~ "BelowHS",
+                                    indv.education == "basic.9y" ~ "BelowHS",
+                                    indv.education == "high.school" ~ "HS_andAbove",
+                                    indv.education == "professional.course" ~ "HS_andAbove",
+                                    indv.education == "university.degree" ~ "HS_andAbove",
+                                    indv.education == "unknown" ~ "unknown"
+                                    )
+         ) %>%
+  mutate(eng.campaign.dayMonth = paste0(campaign.dayOfWk, "_", campaign.month),
+         eng.5orLessContacts = case_when(campaign.numContacts < 6 ~ 1,
+                                           campaign.numContacts > 5 ~ 0
+                                           ),
+         eng.indv.age = case_when(indv.age > 24 && indv.age < 61 ~ 1,
+                             indv.age < 25 ~ 0,
+                             indv.age > 60 ~ 0),
+         eng.numContact = case_when(campaign.numContacts < 6 ~ 1,
+                                    campaign.numContacts > 5 ~ 0
+                                    ),
+         eng.prevOutcome = case_when(campaign.prevOutcome == "failure" ~ 0,
+                                     campaign.prevOutcome == "nonexistent" ~ 0,
+                                     campaign.prevOutcome == "success" ~ 1
+                                     )
+         )
+
+```
 
 # Methods
 
@@ -240,29 +288,29 @@ set.seed(3456)
 trainIndex <- createDataPartition(housingSubsidy$y_numeric, p = .65,
                                   list = FALSE,
                                   times = 1)
-creditTrain <- housingSubsidy[ trainIndex,]
+creditTrain <- housingSubsidy[ trainIndex,] 
 creditTest  <- housingSubsidy[-trainIndex,]
 ```
 
 ### Model Estimation
 ```{r}
-creditreg2 <- glm(y_numeric ~ .,
-                  data=creditTrain %>% dplyr::select(-y),
+kitchenSink_reg <- glm(y_numeric ~ .,
+                  data=creditTrain %>% dplyr::select(-y, -starts_with("eng")),
                   family="binomial" (link="logit"))
 
-summary(creditreg2)
+summary(kitchenSink_reg)
 
-pR2(creditreg2)[4]
+pR2(kitchenSink_reg)[4]
 ```
 ```{r}
-testProbs <- data.frame(Outcome = as.factor(creditTest$y_numeric),
-                        Probs = predict(creditreg2, creditTest, type= "response"))
+testProbs_Ksink <- data.frame(Outcome = as.factor(creditTest$y_numeric),
+                        Probs = predict(kitchenSink_reg, creditTest, type= "response"))
 #head(testProbs)
 ```
 
 #### Distributions of Predicted Probabilities
 ```{r}
-ggplot(testProbs, aes(x = Probs, fill = as.factor(Outcome))) + 
+ggplot(testProbs_Ksink, aes(x = Probs, fill = as.factor(Outcome))) + 
   geom_density() +
   facet_grid(Outcome ~ .) +
   scale_fill_manual(values = palette2) + xlim(0, 1) +
@@ -273,34 +321,32 @@ ggplot(testProbs, aes(x = Probs, fill = as.factor(Outcome))) +
 ```
 #### Confusion Matrix
 ```{r}
-testProbs <- 
-  testProbs %>%
-  mutate(predOutcome  = as.factor(ifelse(testProbs$Probs > 0.5 , 1, 0)))
+testProbs_Ksink <- testProbs_Ksink %>%
+  mutate(predOutcome  = as.factor(ifelse(testProbs_Ksink$Probs > 0.5 , 1, 0)))
 
-#head(testProbs)
+#head(testProbs_Ksink)
 
-caret::confusionMatrix(testProbs$predOutcome, testProbs$Outcome, 
+caret::confusionMatrix(testProbs_Ksink$predOutcome, testProbs_Ksink$Outcome, 
                        positive = "1")
 ```
 
 
 # Methods 2 : A honed model
 
-
 ### Model Estimation
 ```{r}
-creditreg2 <- glm(y_numeric ~ .,
+honedReg <- glm(y_numeric ~ .,
                   data=creditTrain %>% dplyr::select(-y, -campaign.month, -campaign.dayOfWk, -indv.job, -house.taxLien),
                   family="binomial" (link="logit"))
 
-summary(creditreg2)
+summary(honedReg)
 
-pR2(creditreg2)[4]
+pR2(honedReg)[4]
 ```
 ```{r}
-testProbs <- data.frame(Outcome = as.factor(creditTest$y_numeric),
-                        Probs = predict(creditreg2, creditTest, type= "response"))
-#head(testProbs)
+testProbs_honed <- data.frame(Outcome = as.factor(creditTest$y_numeric),
+                        Probs = predict(honedReg, creditTest, type= "response"))
+#head(testProbs_honed)
 ```
 
 # Comparison
@@ -308,7 +354,7 @@ testProbs <- data.frame(Outcome = as.factor(creditTest$y_numeric),
 ### Distributions of Predicted Probabilities
 ```{r, fig.height=8, fig.width=10}
 grid.arrange(nrow = 2,
-  ggplot(testProbs, aes(x = Probs, fill = as.factor(Outcome))) + 
+  ggplot(testProbs_Ksink, aes(x = Probs, fill = as.factor(Outcome))) + 
   geom_density() +
   facet_grid(Outcome ~ .) +
   scale_fill_manual(values = palette2) + xlim(0, 1) +
@@ -317,7 +363,7 @@ grid.arrange(nrow = 2,
   plotTheme() + theme(strip.text.x = element_text(size = 18),
         legend.position = "none"),
   
-  ggplot(testProbs, aes(x = Probs, fill = as.factor(Outcome))) + 
+  ggplot(testProbs_honed, aes(x = Probs, fill = as.factor(Outcome))) + 
     geom_density() +
     facet_grid(Outcome ~ .) +
     scale_fill_manual(values = palette2) + xlim(0, 1) +
@@ -329,13 +375,12 @@ grid.arrange(nrow = 2,
 ```
 #### Confusion Matrix
 ```{r}
-testProbs <- 
-  testProbs %>%
-  mutate(predOutcome  = as.factor(ifelse(testProbs$Probs > 0.5 , 1, 0)))
+testProbs_honed <- testProbs_honed %>%
+  mutate(predOutcome  = as.factor(ifelse(testProbs_honed$Probs > 0.5 , 1, 0)))
 
-#head(testProbs)
+#head(testProbs_honed)
 
-caret::confusionMatrix(testProbs$predOutcome, testProbs$Outcome, 
+caret::confusionMatrix(testProbs_honed$predOutcome, testProbs_honed$Outcome, 
                        positive = "1")
 ```
 
