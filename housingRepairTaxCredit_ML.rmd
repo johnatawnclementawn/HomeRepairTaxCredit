@@ -100,7 +100,7 @@ housingSubsidy %>%
       facet_wrap(~Variable, scales = "free") +
       scale_fill_manual(values = palette2) +
       labs(x="y", y="Value", 
-           title = "Feature associations with the likelihood of deployment of credit",
+           title = "Feature associations with the likelihood of disembursement",
            subtitle = "(continous outcomes)") +
       theme(legend.position = "none")
 
@@ -123,8 +123,8 @@ housingSubsidy %>%
     geom_bar(position = "fill", stat="identity") +
     facet_wrap(~Variable, scales="free") +
     scale_fill_manual(values = palette2) +
-    labs(x="Churn", y="Count",
-         title = "Feature associations with the likelihood of churn",
+    labs(x="Disembursement", y="Percentage",
+         title = "Feature associations with the likelihood of disembursement",
          subtitle = "Three category features") +
     plotTheme() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
@@ -379,6 +379,7 @@ grid.arrange(nrow = 2,
           legend.position = "none")
 )
 ```
+
 ### Confusion Matrix
 ```{r}
 testProbs_Ksink <- testProbs_Ksink %>%
@@ -399,6 +400,54 @@ testProbs_honed <- testProbs_honed %>%
 print('Honed Model')
 caret::confusionMatrix(testProbs_honed$predOutcome, testProbs_honed$Outcome, 
                        positive = "1")
+```
+
+
+### Cross Validation
+```{r}
+ctrl <- trainControl(method = "cv", number = 100, classProbs=TRUE, summaryFunction=twoClassSummary)
+
+nonEngineered <- housingSubsidy %>% dplyr::select(-y_numeric, -starts_with("eng"))
+
+cvFit_ks <- train(y ~ ., data=nonEngineered, 
+                method="glm", family="binomial",
+                metric="ROC", trControl = ctrl)
+
+cvFit_hnd <- train(y ~ ., data=housingSubsidy %>% dplyr::select(y, starts_with("eng"), 
+                                                     -starts_with("indv"), -starts_with("house"), 
+                                                     -campaignCols), 
+                method="glm", family="binomial",
+                metric="ROC", trControl = ctrl)
+
+
+cvFit_ks
+cvFit_hnd
+
+```
+
+#### Visualizing Cross Validation
+```{r fig.height=, message=FALSE, warning=FALSE}
+GOF_figure <- function(cv, title) {
+  plot <- dplyr::select(cv$resample, -Resample) %>%
+            gather(metric, value) %>%
+            left_join(gather(cv$results[2:4], metric, mean)) %>%
+            ggplot(aes(value)) + 
+              geom_histogram(bins=35, fill = "#FF006A") +
+              facet_wrap(~metric) +
+              geom_vline(aes(xintercept = mean), colour = "#981FAC", linetype = 3, size = 1.5) +
+              scale_x_continuous(limits = c(0, 1)) +
+              labs(x="Goodness of Fit", y="Count", title="CV Goodness of Fit Metrics",
+                   subtitle = paste(title, "| Across-fold mean reprented as dotted lines")) +
+              plotTheme()
+  
+  return(plot)
+}
+
+GOF_ks <- GOF_figure(cvFit_ks, 'Kitchen sink model')
+GOF_hnd <- GOF_figure(cvFit_hnd, 'Honed model')
+
+grid.arrange(nrow=2, GOF_ks, GOF_hnd)
+
 ```
 
 ### ROC Curves
@@ -423,56 +472,32 @@ paste("The area under the curve is:", round(pROC::auc(testProbs_honed$Outcome, t
 ```
 
 
-### Cross Validation
-```{r}
-ctrl <- trainControl(method = "cv", number = 100, classProbs=TRUE, summaryFunction=twoClassSummary)
+# Analysis of Costs & Benefits
 
-nonEngineered <- housingSubsidy %>% dplyr::select(-starts_with("eng"))
+To contextualize the improvements of our engineered model to the business-as-usual (BAU) case, we present a cost benefit analysis below. We will compare the costs incurred by the Government, with the benefits, which are generally collected by both the homeowner and their surrounding neighbors. If the accrual of home values outweighs the costs of spending tax dollars on the marketing and deployment of the subsidy, then HCD should adopt this method of prediction. 
 
-cvFit_ks <- train(y ~ ., data=nonEngineered, 
-                method="glm", family="binomial",
-                metric="ROC", trControl = ctrl)
+Here are the potential costs: If we predict that a household will take the credit, then HCD is willing to allocate $2,850 per homeowner for marketing and support. These costs include staff and resources to facilitate mailers, phone calls, and information/counseling sessions at the HCD offices. This allocation is for every household to which the subsidy is marketed.
+The subsidy itself is a $5,000 credit for improvements made to the house, This allocation is only for household who actually takes the credit.
 
-cvFit_hnd <- train(y ~ ., data=housingSubsidy %>% dplyr::select(y, starts_with("eng"), 
-                                                     -starts_with("indv"), -starts_with("house"), 
-                                                     -campaignCols), 
-                method="glm", family="binomial",
-                metric="ROC", trControl = ctrl)
+It has been found that households previously engaging in the program saw an increase of $10,000 in their home's value.
+Further, it has been found that the value of the homes surrounding the improved house saw a collective increase of $56,000 
+(If there are 5 surrounding homes, each home saw an increase in value of $11,200.)
 
-
-cvFit_ks
-cvFit_hnd
-
-```
-
-#### Visualizing Cross Validation
-```{r fig.height= 10}
-createGOF <- function(cv, title) {
-plot <- dplyr::select(cv$resample, -Resample) %>%
-          gather(metric, value) %>%
-          left_join(gather(cv$results[2:4], metric, mean)) %>%
-          ggplot(aes(value)) + 
-            geom_histogram(bins=35, fill = "#FF006A") +
-            facet_wrap(~metric) +
-            geom_vline(aes(xintercept = mean), colour = "#981FAC", linetype = 3, size = 1.5) +
-            scale_x_continuous(limits = c(0, 1)) +
-            labs(x="Goodness of Fit", y="Count", title="CV Goodness of Fit Metrics",
-                 subtitle = paste(title, "| Across-fold mean reprented as dotted lines")) +
-            plotTheme()
-
-return(plot)
-}
-
-GOF_ks <- createGOF(cvFit_ks, 'Kitchen sink model')
-GOF_hnd <- createGOF(cvFit_hnd, 'Honed model')
-
-grid.arrange(nrow=2, GOF_ks, GOF_hnd)
-
-
+Tabulated below is the cost/benefit for one house of each prediction classification. Since tax dollars ultimately fund the program, and since we have no way of differentiating between neighborhoods in this study, the net benefits are those that the society at large accrues. 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+bind_cols(data.frame(Classification = c("True Positive","True Negative","False Positive","False Negative"),
+                     Description = c("Predicted correctly homeowner would take the credit; allocated the marketing resources.",
+                                     "Predicted correctly homeowner would not take the credit, no marketing resources were allocated, and no credit was allocated.",
+                                     "Predicted incorrectly homeowner would take the credit; allocated marketing resources; no credit allocated.",
+                                     "Predicted incorrectly homeowner would not take the credit; no marketing resources were allocated, but credit was allocated."),
+                     Cost = c("-$2850 -$5000", "$0", "-$2850", "-$5000"),
+                     Benefit = c("$10,000 + $56,000", "$0", "$0", "$10,000 + $56,000"),
+                     Net_Benefit = c("$58,150", "$0", "-$2850", "$61,000")
+                     )
+          )
 ```
 
 
-# Discussion & Conclusions
 
 # Appendix
 ### Citations
