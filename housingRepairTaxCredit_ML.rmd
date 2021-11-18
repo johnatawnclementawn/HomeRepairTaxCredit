@@ -14,7 +14,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE)
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, error = TRUE, cache=TRUE)
 
 library(caret)
 library(FNN)
@@ -426,27 +426,31 @@ cvFit_hnd
 ```
 
 #### Visualizing Cross Validation
-```{r fig.height=, message=FALSE, warning=FALSE}
-GOF_figure <- function(cv, title) {
-  plot <- dplyr::select(cv$resample, -Resample) %>%
-            gather(metric, value) %>%
-            left_join(gather(cv$results[2:4], metric, mean)) %>%
-            ggplot(aes(value)) + 
-              geom_histogram(bins=35, fill = "#FF006A") +
-              facet_wrap(~metric) +
-              geom_vline(aes(xintercept = mean), colour = "#981FAC", linetype = 3, size = 1.5) +
-              scale_x_continuous(limits = c(0, 1)) +
-              labs(x="Goodness of Fit", y="Count", title="CV Goodness of Fit Metrics",
-                   subtitle = paste(title, "| Across-fold mean reprented as dotted lines")) +
-              plotTheme()
-  
-  return(plot)
-}
-
-GOF_ks <- GOF_figure(cvFit_ks, 'Kitchen sink model')
-GOF_hnd <- GOF_figure(cvFit_hnd, 'Honed model')
-
-grid.arrange(nrow=2, GOF_ks, GOF_hnd)
+```{r echo=TRUE, fig.height=, message=FALSE, warning=FALSE}
+grid.arrange(nrow=2,
+             dplyr::select(cvFit_ks$resample, -Resample) %>%
+                gather(metric, value) %>%
+                left_join(gather(cvFit_ks$results[2:4], metric, mean)) %>%
+                ggplot(aes(value)) +
+                  geom_histogram(bins=35, fill = "#FF006A") +
+                  facet_wrap(~metric) +
+                  geom_vline(aes(xintercept = mean), colour = "#981FAC", linetype = 3, size = 1.5) +
+                  scale_x_continuous(limits = c(0, 1)) +
+                  labs(x="Goodness of Fit", y="Count", title="CV Goodness of Fit Metrics",
+                       subtitle = paste('Kitchen sink model', " Across-fold mean reprented as dotted lines")) +
+                  plotTheme(),
+            dplyr::select(cvFit_hnd$resample, -Resample) %>%
+                gather(metric, value) %>%
+                left_join(gather(cvFit_hnd$results[2:4], metric, mean)) %>%
+                ggplot(aes(value)) +
+                  geom_histogram(bins=35, fill = "#FF006A") +
+                  facet_wrap(~metric) +
+                  geom_vline(aes(xintercept = mean), colour = "#981FAC", linetype = 3, size = 1.5) +
+                  scale_x_continuous(limits = c(0, 1)) +
+                  labs(x="Goodness of Fit", y="Count", title="CV Goodness of Fit Metrics",
+                       subtitle = paste('Honed model', " Across-fold mean reprented as dotted lines")) +
+                  plotTheme()
+            )
 
 ```
 
@@ -474,7 +478,7 @@ paste("The area under the curve is:", round(pROC::auc(testProbs_honed$Outcome, t
 
 # Analysis of Costs & Benefits
 
-To contextualize the improvements of our engineered model to the business-as-usual (BAU) case, we present a cost benefit analysis below. We will compare the costs incurred by the Government, with the benefits, which are generally collected by both the homeowner and their surrounding neighbors. If the accrual of home values outweighs the costs of spending tax dollars on the marketing and deployment of the subsidy, then HCD should adopt this method of prediction. 
+To compare the improvements of our engineered model to the business-as-usual (BAU) case, we present a cost benefit analysis below. We compare the costs incurred by the Government, with the benefits, which are generally collected by both the homeowner and their surrounding neighbors. If the accrual of home values outweighs the costs of spending tax dollars on the marketing and deployment of the subsidy, then HCD should adopt this method of prediction. 
 
 Here are the potential costs: If we predict that a household will take the credit, then HCD is willing to allocate $2,850 per homeowner for marketing and support. These costs include staff and resources to facilitate mailers, phone calls, and information/counseling sessions at the HCD offices. This allocation is for every household to which the subsidy is marketed.
 The subsidy itself is a $5,000 credit for improvements made to the house, This allocation is only for household who actually takes the credit.
@@ -490,13 +494,97 @@ bind_cols(data.frame(Classification = c("True Positive","True Negative","False P
                                      "Predicted correctly homeowner would not take the credit, no marketing resources were allocated, and no credit was allocated.",
                                      "Predicted incorrectly homeowner would take the credit; allocated marketing resources; no credit allocated.",
                                      "Predicted incorrectly homeowner would not take the credit; no marketing resources were allocated, but credit was allocated."),
-                     Cost = c("-$2850 -$5000", "$0", "-$2850", "-$5000"),
-                     Benefit = c("$10,000 + $56,000", "$0", "$0", "$10,000 + $56,000"),
+                     Cost = c("-$2850-5000", "$0", "-$2850", "-$5000"),
+                     Benefit = c("$10,000+56,000", "$0", "$0", "$10,000+56,000"),
                      Net_Benefit = c("$58,150", "$0", "-$2850", "$61,000")
                      )
-          )
+          ) %>% 
+  kable() %>% kable_styling()
 ```
 
+### Calculated Costs/Benefits
+```{r}
+cost_benefit_table <-
+   testProbs_honed %>%
+      count(predOutcome, Outcome) %>%
+      summarize(True_Positive = round(0.25 * sum(n[predOutcome==1 & Outcome==1]),0),
+                True_Negative = sum(n[predOutcome==0 & Outcome==0]),
+                False_Positive = sum(n[predOutcome==1 & Outcome==0]) + round(0.75 * sum(n[predOutcome==1 & Outcome==1]),0),
+                False_Negative = sum(n[predOutcome==0 & Outcome==1])) %>%
+       gather(Variable, Count) %>%
+       mutate(Net_Benefit_USD = case_when(Variable == "True_Positive"  ~ 58150 * Count,
+                                       Variable == "True_Negative"  ~ 0 * Count,
+                                       Variable == "False_Positive" ~ (-2850) * Count,
+                                       Variable == "False_Negative" ~ 61000 * Count
+                                      )
+              ) %>%
+      bind_cols(data.frame(Description = c("Predicted correctly homeowner would take the credit; allocated the marketing resources.",
+                                       "Predicted correctly homeowner would not take the credit, no marketing resources were allocated, and no credit was allocated.",
+                                       "Predicted incorrectly homeowner would take the credit; allocated marketing resources; no credit allocated.",
+                                       "Predicted incorrectly homeowner would not take the credit; no marketing resources were allocated, but credit was allocated.")
+                          )
+                )
+
+cost_benefit_table %>% kable() %>% kable_styling()
+```
+
+```{r}
+whichThreshold <- 
+  iterateThresholds(
+    data=testProbs_honed, observedClass = Outcome, predictedProbs = Probs) %>%
+    dplyr::select(starts_with("Count"), Threshold) %>%
+    gather(Variable, Count, -Threshold) %>%
+    mutate(Revenue =
+             case_when(Variable == "Count_TP"  ~ 58150 * Count,
+                       Variable == "Count_TN"  ~ 0 * Count,
+                       Variable == "Count_FP"  ~ (-2850) * Count,
+                       Variable == "Count_FN"  ~ 61000 * Count
+                       )
+          )
+
+whichThreshold %>%
+  ggplot(.,aes(Threshold, Revenue, colour = Variable)) +
+  geom_point() +
+  scale_colour_manual(values = palette5[c(5, 1:3)]) +    
+  labs(title = "Revenue by confusion matrix type and threshold",
+       y = "Revenue") +
+  plotTheme() +
+  guides(colour=guide_legend(title = "Confusion Matrix")) 
+```
+```{r}
+whichThreshold_revenue <- 
+  whichThreshold %>% 
+    mutate(Total_Count_of_Credits = ifelse(Variable == "Count_TP", (Count * .25),
+                                 ifelse(Variable == "Count_FN", Count, 0))) %>% 
+    group_by(Threshold) %>% 
+    summarize(Total_Revenue = sum(Revenue),
+              Total_Credits_Rate = sum(Total_Count_of_Credits) / sum(Count),
+              Total_Count_of_Credits = sum(Total_Count_of_Credits)) 
+
+whichThreshold_revenue %>%
+  dplyr::select(Threshold, Total_Revenue, Total_Count_of_Credits) %>%
+  gather(Variable, Value, -Threshold) %>%
+  ggplot(aes(Value, Threshold, colour = Variable)) +
+    geom_point() +
+    geom_hline(yintercept = pull(arrange(whichThreshold_revenue, -Total_Revenue)[1,1])) +
+    scale_colour_manual(values = palette2) +
+    facet_wrap(~Variable, scale = "free") +
+    plotTheme() +
+    labs(title = "Threshold by revenue and number of taken credits",
+         subtitle = "Horizontal line denotes optimal threshold by revenue")
+```
+
+
+```{r}
+optimal_threshod = pull(arrange(whichThreshold_revenue, -Total_Revenue)[1,1])
+
+whichThreshold_revenue %>% 
+  filter(Threshold == .5 | Threshold == optimal_threshod) %>% 
+  dplyr::select(Total_Revenue, Total_Count_of_Credits) %>% 
+  cbind(data.frame(Model = c("OptimalThreshold", "50% Threshold")),.) %>% 
+  kable() %>%
+  kable_styling("striped", full_width = F)
+```
 
 
 # Appendix
