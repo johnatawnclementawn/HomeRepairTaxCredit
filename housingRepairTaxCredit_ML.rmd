@@ -426,7 +426,7 @@ cvFit_hnd
 ```
 
 #### Visualizing Cross Validation
-```{r echo=TRUE, fig.height=, message=FALSE, warning=FALSE}
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 grid.arrange(nrow=2,
              dplyr::select(cvFit_ks$resample, -Resample) %>%
                 gather(metric, value) %>%
@@ -457,7 +457,7 @@ grid.arrange(nrow=2,
 ### ROC Curves
 "The Receiver Operating Characteristic Curve or ROC Curve is useful because it visualizes trade-offs for two important confusion metrics, while also providing a single goodness of fit indicator"(Steif, 2021).
 
-```{r fig.width=, message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE}
 grid.arrange(ncol = 2,
   ggplot(testProbs_Ksink, aes(d = as.numeric(testProbs_Ksink$Outcome), m = Probs)) +
     geom_roc(n.cuts = 50, labels = FALSE, colour = "#FE9900") +
