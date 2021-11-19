@@ -52,10 +52,46 @@ palette2 <- c("#981FAC","#FF006A")
 
 Data Dictionary:
 ```{r}
-dataDictionary <- read.csv("dataDictionary.csv")
+dataDictionary <- read.csv("dataDictionary.csv") 
 
-# dataDictionary %>%
-#   kable()
+# Remove whitespace in records for Variable field
+dataDictionary$Variable <- gsub(" ", "", dataDictionary$Variable, fixed = TRUE)
+dataDictionary <- dataDictionary[-c(21),]
+
+dataDictionary <- dataDictionary %>%
+  mutate(Variables_NewNames = case_when(Variable == "age" ~ "indv.age",
+                                        Variable == "job" ~ "indv.job",
+                                        Variable == "marital" ~ "indv.marital",
+                                        Variable == "education" ~ "indv.education",
+                                        Variable == "taxbill_in_phl" ~ "indv.taxBillInPHL",
+                                        Variable == "taxLien" ~ "house.taxLien",
+                                        Variable == "mortgage" ~ "house.mortgage",
+                                        Variable == "spent_on_repairs" ~ "house.spentOnRepairs",
+                                        Variable == "contact" ~ "campaign.contact",
+                                        Variable == "month" ~ "campaign.month",
+                                        Variable == "day_of_week" ~ "campaign.dayOfWk",
+                                        Variable == "campaign" ~ "campaign.numContacts",
+                                        Variable == "pdays" ~ "campaign.numDaysPC",
+                                        Variable == "previous" ~ "campaign.prevContact",
+                                        Variable == "poutcome" ~ "campaign.prevOutcome",
+                                        Variable == "unemploy_rate" ~ "env.unemploymentRate",
+                                        Variable == "cons.price.idx" ~ "env.consPriceIdx",
+                                        Variable == "cons.conf.idx" ~ "env.consConfIdx",
+                                        Variable == "inflation_rate" ~ "env.inflationRate"
+                             )
+
+        ) %>%
+  mutate(EngineeredVars = case_when(Variable == "age" ~ "eng.indv.age", 
+                                    Variable == "job" ~ "eng.indv.job",
+                                    Variable == "marital" ~ "eng.indv.marital",
+                                    Variable == "education" ~ "eng.indv.edu",
+                                    Variable == "campaign" ~ "eng.5orLessContacts",
+                                    Variable == "poutcome" ~ "eng.prevOutcome",
+                             )
+        )
+
+dataDictionary %>% dplyr::select(Variable, Variables_NewNames, EngineeredVars, Description) %>%
+  kable() %>% kable_styling()
 
 ```
 
@@ -93,7 +129,8 @@ housingSubsidy <- housingSubsidy %>%
 ### Exploration
 ```{r}
 housingSubsidy %>%
-  dplyr::select(y, house.spentOnRepairs,env.consPriceIdx, env.consConfIdx, campaign.numContacts, campaign.numDaysPC, indv.age) %>%
+  dplyr::select(y, house.spentOnRepairs,env.consPriceIdx, env.consConfIdx, 
+                env.unemploymentRate, env.inflationRate, campaign.numContacts, campaign.numDaysPC, indv.age) %>%
   gather(Variable, value, -y) %>%
     ggplot(aes(y, value, fill=y)) + 
       geom_bar(position = "dodge", stat = "summary", fun.y = "mean") + 
@@ -105,14 +142,15 @@ housingSubsidy %>%
       theme(legend.position = "none")
 
 housingSubsidy %>%
-    dplyr::select(y, house.spentOnRepairs,env.consPriceIdx, env.consConfIdx, campaign.numContacts, campaign.numDaysPC, indv.age) %>%
+    dplyr::select(y, house.spentOnRepairs,env.consPriceIdx, env.consConfIdx, 
+                  env.unemploymentRate, env.inflationRate, campaign.numContacts, campaign.numDaysPC, indv.age) %>%
     gather(Variable, value, -y) %>%
-    ggplot() + 
-    geom_density(aes(value, color=y), fill = "transparent") + 
+    ggplot() +
+    geom_density(aes(value, color=y), fill = "transparent") +
     facet_wrap(~Variable, scales = "free") +
     scale_fill_manual(values = palette2) +
     labs(title = "Feature distributions took credit vs. no credit",
-         subtitle = "(continous outcomes)") 
+         subtitle = "(continous outcomes)")
 ```
 ```{r fig.width=10, fig.height= 10}
 housingSubsidy %>%
@@ -133,7 +171,7 @@ housingSubsidy %>%
 #round(table(housingSubsidy$campaign.month)/sum(table(housingSubsidy$campaign.month)),2)
 ```
 
-```{r correlationMatrix}
+```{r correlationMatrix, eval=FALSE, include=FALSE}
 numericVars <- housingSubsidy %>% 
   select(where(is.numeric)) %>%
   select(-X) %>%
@@ -576,10 +614,10 @@ whichThreshold_revenue %>%
 
 
 ```{r}
-optimal_threshod = pull(arrange(whichThreshold_revenue, -Total_Revenue)[1,1])
+optimal_threshold = pull(arrange(whichThreshold_revenue, -Total_Revenue)[1,1])
 
 whichThreshold_revenue %>% 
-  filter(Threshold == .5 | Threshold == optimal_threshod) %>% 
+  filter(Threshold == .5 | Threshold == optimal_threshold) %>% 
   dplyr::select(Total_Revenue, Total_Count_of_Credits) %>% 
   cbind(data.frame(Model = c("OptimalThreshold", "50% Threshold")),.) %>% 
   kable() %>%
