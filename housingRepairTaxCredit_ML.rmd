@@ -1,11 +1,9 @@
 ---
 title: "People Based ML - Housing Repair Tax Credit"
 author: "Johnathan Clementi"
-date: "11/2/2021"
+date: "11/5/2021"
 output: 
   html_document:
-    theme: journal
-    highlight: haddock
     toc: true
     toc_float:
       collapsed: true
@@ -14,7 +12,13 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, error = TRUE, cache=TRUE)
+knitr::opts_chunk$set(
+	echo = TRUE,
+	error = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE
+)
 
 library(caret)
 library(FNN)
@@ -48,9 +52,13 @@ palette4 <- c("#981FAC","#FF006A","#FE4C35","#FE9900")
 palette2 <- c("#981FAC","#FF006A")
 ```
 
-# Introduction
+# 1. Introduction
 
-Data Dictionary:
+The Department of Housing and Community Development (HCD) is interested in developing a more targeted and effective program for providing home repair tax credits. Historically, HCD has contacted homeowners and encouraged them to enroll in the program. However, only about 11% of eligible households who were contacted took the credit. A more effective program offers the prospect of neighborhood house value agglomeration in excess of $58,000, which corresponds to an \$8.40 increase in home values for every dollar spent by HCD. Below we compare the costs and benefits of the business-as-usual case to our honed model.   
+
+### Data Processing and Exploration
+The data dictionary for this dataset is contained below. In order to increase our predictive power, we have engineered new features.   
+
 ```{r}
 dataDictionary <- read.csv("dataDictionary.csv") 
 
@@ -87,6 +95,7 @@ dataDictionary <- dataDictionary %>%
                                     Variable == "education" ~ "eng.indv.edu",
                                     Variable == "campaign" ~ "eng.5orLessContacts",
                                     Variable == "poutcome" ~ "eng.prevOutcome",
+                                    Variable == "unemploy_rate" ~ "eng.unemployRate"
                              )
         )
 
@@ -95,8 +104,7 @@ dataDictionary %>% dplyr::select(Variable, Variables_NewNames, EngineeredVars, D
 
 ```
 
-## Data
-```{r}
+```{r include=FALSE}
 housingSubsidy <- read.csv(paste0(root.dir,"Chapter6/housingSubsidy.csv"))
 
 housingSubsidy <- housingSubsidy %>%
@@ -126,8 +134,10 @@ housingSubsidy <- housingSubsidy %>%
         ) 
 ```
 
-### Exploration
-```{r}
+### Visualization
+
+The figures below illustrate the relationship of existing features between an individual taking or not taking the tax credit. The first group of plots illustrate the average of that variable (e.g. number of contacts) for the group of people taking the tax credit (yes) and the group of people not taking the tax credit (no). Variables that illustrate significant differences across yes/no outcomes are useful for predicting whether an individual will take the credit.   
+```{r message=FALSE, warning=FALSE}
 housingSubsidy %>%
   dplyr::select(y, house.spentOnRepairs,env.consPriceIdx, env.consConfIdx, 
                 env.unemploymentRate, env.inflationRate, campaign.numContacts, campaign.numDaysPC, indv.age) %>%
@@ -136,11 +146,15 @@ housingSubsidy %>%
       geom_bar(position = "dodge", stat = "summary", fun.y = "mean") + 
       facet_wrap(~Variable, scales = "free") +
       scale_fill_manual(values = palette2) +
-      labs(x="y", y="Value", 
+      labs(x="Funds disbursed or not", y="Value", 
            title = "Feature associations with the likelihood of disembursement",
            subtitle = "(continous outcomes)") +
       theme(legend.position = "none")
+```
 
+The plots above can hide usable variation because they plot the mean. The plots below illustrate the frequency at which the variable occurs across its range for yes/no outcomes.   
+
+```{r}
 housingSubsidy %>%
     dplyr::select(y, house.spentOnRepairs,env.consPriceIdx, env.consConfIdx, 
                   env.unemploymentRate, env.inflationRate, campaign.numContacts, campaign.numDaysPC, indv.age) %>%
@@ -150,8 +164,11 @@ housingSubsidy %>%
     facet_wrap(~Variable, scales = "free") +
     scale_fill_manual(values = palette2) +
     labs(title = "Feature distributions took credit vs. no credit",
-         subtitle = "(continous outcomes)")
+         subtitle = "(continous features)")
 ```
+
+These plots illustrate the proportion of yes/no across categorical variables. In this case, useful variables are those that exhibit variation of yes/no across the categories. For instance, we could predict that for whatever reason, people are more likely to take the subsidy in December and March.
+
 ```{r fig.width=10, fig.height= 10}
 housingSubsidy %>%
   dplyr::select(y, indv.job, indv.marital, indv.education, campaign.contact, campaign.month, campaign.dayOfWk, house.mortgage, house.taxLien) %>%
@@ -161,9 +178,9 @@ housingSubsidy %>%
     geom_bar(position = "fill", stat="identity") +
     facet_wrap(~Variable, scales="free") +
     scale_fill_manual(values = palette2) +
-    labs(x="Disembursement", y="Percentage",
+    labs(x="Disbursement", y="Percentage",
          title = "Feature associations with the likelihood of disembursement",
-         subtitle = "Three category features") +
+         subtitle = "Categorical features") +
     plotTheme() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 # Campaign month share
@@ -237,8 +254,11 @@ keep <- ynumCorlist$name
 # keep <- append(keep, categorical)
 ```
 
+# 2. Methods
+
 ### Engineering Features
-```{r}
+By themselves, the features visualized above do not hold a lot of predictive power. Below, we engineer features to account for this and increase the predictive abilities of our models. Based on the observed distributions, we decided to engineer features for an individuals age, job status, marital status, educational status, time period (day & month), if the person had been contacted for this campaign less than 5 times, if the individual had previously taken the credit, and what the unemployment rate was at the time of contact. We found that most individuals taking subsidy were contacted 5 or less times. We found that most individuals taking subsidy were between 25 and 60. We found that people that took the subsidy previously are 64% likely to take the subsidy again. We found that people with HS degree or higher had at least a 10% chance of taking the subsidy. Finally, we found that When the unemployment rate is below -0.2, people are more likely to take the subsidy.   
+```{r eval=FALSE, include=FALSE}
   
 # # Identifying which variales to transform:
 # yes <- housingSubsidy %>% filter(y_numeric == 1)
@@ -272,8 +292,15 @@ keep <- ynumCorlist$name
 # table(temp$campaign.prevOutcome)
 # table(yes$campaign.prevOutcome)/table(temp$campaign.prevOutcome)
 # # People that took the subsidy previously are 64% likely to take the subsidy again
+# 
+# temp <- housingSubsidy %>% filter(env.unemploymentRate != -0.2)
+# table(yes$env.unemploymentRate)
+# table(temp$env.unemploymentRate)
+# table(yes$env.unemploymentRate)/table(temp$env.unemploymentRate)
+# # When the unemployment rate is below -0.2, people are more likely to take the subsidy
+```
 
-
+```{r}
 # Engineer Features based on findings from code above
 housingSubsidy <- housingSubsidy %>%
   mutate(eng.indv.job = indv.job) %>%# For engineered Features
@@ -310,14 +337,16 @@ housingSubsidy <- housingSubsidy %>%
          eng.prevOutcome = case_when(campaign.prevOutcome == "failure" ~ 0,
                                      campaign.prevOutcome == "nonexistent" ~ 0,
                                      campaign.prevOutcome == "success" ~ 1
-                                     )
+                                     ),
+         eng.unemployRate = case_when(env.unemploymentRate >= -0.1 ~ 0,
+                                      env.unemploymentRate < -0.1 ~ 1)
          )
 
 ```
 
-# Methods
 
 ### Training and Test Sets
+We split the data into training and test sets for the purposes of building the models and then testing whether they can predict on unseen data.
 ```{r}
 set.seed(3456)
 trainIndex <- createDataPartition(housingSubsidy$y_numeric, p = .65,
@@ -327,50 +356,28 @@ creditTrain <- housingSubsidy[ trainIndex,]
 creditTest  <- housingSubsidy[-trainIndex,]
 ```
 
-### Model Estimation
+### BAU/'Kitchen Sink' Model Estimation
+We estimate the business-as-usual prediction model. This is what we will compare our honed model to.
 ```{r}
 kitchenSink_reg <- glm(y_numeric ~ .,
                   data=creditTrain %>% dplyr::select(-y, -starts_with("eng")),
                   family="binomial" (link="logit"))
 
-summary(kitchenSink_reg)
-
-pR2(kitchenSink_reg)[4]
-```
-```{r}
+# Predict disbursement for kitchen sink model
 testProbs_Ksink <- data.frame(Outcome = as.factor(creditTest$y_numeric),
                         Probs = predict(kitchenSink_reg, creditTest, type= "response"))
 #head(testProbs)
+
+summary(kitchenSink_reg)
+
 ```
 
-#### Distributions of Predicted Probabilities
-```{r eval=FALSE, include=FALSE}
-ggplot(testProbs_Ksink, aes(x = Probs, fill = as.factor(Outcome))) + 
-  geom_density() +
-  facet_grid(Outcome ~ .) +
-  scale_fill_manual(values = palette2) + xlim(0, 1) +
-  labs(x = "Credit", y = "Density of probabilities",
-       title = "Distribution of predicted probabilities by observed outcome") +
-  plotTheme() + theme(strip.text.x = element_text(size = 18),
-        legend.position = "none")
+```{r}
+
 ```
 
-
-#### Confusion Matrix
-```{r eval=FALSE, include=FALSE}
-testProbs_Ksink <- testProbs_Ksink %>%
-  mutate(predOutcome  = as.factor(ifelse(testProbs_Ksink$Probs > 0.5 , 1, 0)))
-
-#head(testProbs_Ksink)
-
-caret::confusionMatrix(testProbs_Ksink$predOutcome, testProbs_Ksink$Outcome, 
-                       positive = "1")
-```
-
-
-# Methods 2 : A honed model
-
-### Model Estimation
+### Honed Model Estimation
+The engineered features are used to create a new prediction model.
 ```{r}
 campaignCols <- colnames(housingSubsidy %>% select(starts_with("campaign")))
 campaignCols <- campaignCols[campaignCols != "campaign.contact"]
@@ -382,20 +389,31 @@ honedReg <- glm(y_numeric ~ .,
                                                      ),
                   family="binomial" (link="logit"))
 
-summary(honedReg)
-
-pR2(honedReg)[4]
-```
-```{r}
+# Predict disbursement for honed model
 testProbs_honed <- data.frame(Outcome = as.factor(creditTest$y_numeric),
                         Probs = predict(honedReg, creditTest, type= "response"))
 #head(testProbs_honed)
+
+summary(honedReg)
+
 ```
 
 
-# Results Comparison
+# 3. Results Comparison
+
+### McFadden R^2
+The McFadden R^2 is a pseudo R^2 value. The higher the value, the better the model is at fitting its predictions to the data. These values indicate that our honed model is better fitted to the data.   
+```{r}
+
+paste("The honed model R^2 is:", round(pR2(kitchenSink_reg)[4],5))
+
+paste("The honed model R^2 is:", round(pR2(honedReg)[4],5))
+```
+
 
 ### Distributions of Predicted Probabilities
+The figures below illustrate the distribution of predicted probabilities for an individual taking the tax credit or not (0 or 1). If the model was good at predicting all values,
+the 'hump' for no tax credit would be focused on the 0.00 mark on the x-axis and the 'hump' for taking the tax credit would be located around the 1.00 mark on the x-axis.   
 ```{r, fig.height=8, fig.width=10}
 grid.arrange(nrow = 2,
   ggplot(testProbs_Ksink, aes(x = Probs, fill = as.factor(Outcome))) + 
@@ -419,6 +437,7 @@ grid.arrange(nrow = 2,
 ```
 
 ### Confusion Matrix
+A confusion matrix and statistics allow us to measure a model's accuracy. An over-fit model would have zero occurrences in false negative and false positive quadrants (lower left and upper right). The goal of the honed model is to be able to add more predictive ability to move some false positives to true positives. 
 ```{r}
 testProbs_Ksink <- testProbs_Ksink %>%
   mutate(predOutcome  = as.factor(ifelse(testProbs_Ksink$Probs > 0.5 , 1, 0)))
@@ -440,9 +459,29 @@ caret::confusionMatrix(testProbs_honed$predOutcome, testProbs_honed$Outcome,
                        positive = "1")
 ```
 
+### ROC Curves
+"The Receiver Operating Characteristic Curve or ROC Curve is useful because it visualizes trade-offs for two important confusion metrics, while also providing a single goodness of fit indicator"(Steif, 2021). Because there are so few individuals taking the credit, it is hard to predict who will and who wont. The diagonal line from the bottom-left corner to the upper-right corner represents a coin-toss case. If our ROC line is above the coin-toss line, it indicates that we are at least better than a 50:50 chance of predicting the individual will take the tax credit. 
+
+```{r message=FALSE, warning=FALSE}
+grid.arrange(ncol = 2,
+  ggplot(testProbs_Ksink, aes(d = as.numeric(testProbs_Ksink$Outcome), m = Probs)) +
+    geom_roc(n.cuts = 50, labels = FALSE, colour = "#FE9900") +
+    style_roc(theme = theme_grey) +
+    geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
+    labs(title = "ROC Curve - Kitchen Sink Model"),
+  ggplot(testProbs_honed, aes(d = as.numeric(testProbs_honed$Outcome), m = Probs)) +
+    geom_roc(n.cuts = 50, labels = FALSE, colour = "#FE9900") +
+    style_roc(theme = theme_grey) +
+    geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
+    labs(title = "ROC Curve - Honed Model")
+)
+
+paste("The area under the curve is:", round(pROC::auc(testProbs_Ksink$Outcome, testProbs_Ksink$Probs),4),"for the Kitchen Sink model")
+paste("The area under the curve is:", round(pROC::auc(testProbs_honed$Outcome, testProbs_honed$Probs),4),"for the Honed model")
+```
 
 ### Cross Validation
-```{r}
+```{r include=FALSE}
 ctrl <- trainControl(method = "cv", number = 100, classProbs=TRUE, summaryFunction=twoClassSummary)
 
 nonEngineered <- housingSubsidy %>% dplyr::select(-y_numeric, -starts_with("eng"))
@@ -463,7 +502,10 @@ cvFit_hnd
 
 ```
 
-#### Visualizing Cross Validation
+### Visualizing Cross Validation
+Sensitivity is the proportion of individuals who took the tax credit to those predicted to take the credit. 
+Specificity is the proportion of individuals who did not take the tax credit to those that were predicted to not take the credit. 
+
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 grid.arrange(nrow=2,
              dplyr::select(cvFit_ks$resample, -Resample) %>%
@@ -492,29 +534,10 @@ grid.arrange(nrow=2,
 
 ```
 
-### ROC Curves
-"The Receiver Operating Characteristic Curve or ROC Curve is useful because it visualizes trade-offs for two important confusion metrics, while also providing a single goodness of fit indicator"(Steif, 2021).
-
-```{r message=FALSE, warning=FALSE}
-grid.arrange(ncol = 2,
-  ggplot(testProbs_Ksink, aes(d = as.numeric(testProbs_Ksink$Outcome), m = Probs)) +
-    geom_roc(n.cuts = 50, labels = FALSE, colour = "#FE9900") +
-    style_roc(theme = theme_grey) +
-    geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
-    labs(title = "ROC Curve - Kitchen Sink Model"),
-  ggplot(testProbs_honed, aes(d = as.numeric(testProbs_honed$Outcome), m = Probs)) +
-    geom_roc(n.cuts = 50, labels = FALSE, colour = "#FE9900") +
-    style_roc(theme = theme_grey) +
-    geom_abline(slope = 1, intercept = 0, size = 1.5, color = 'grey') +
-    labs(title = "ROC Curve - Honed Model")
-)
-
-paste("The area under the curve is:", round(pROC::auc(testProbs_Ksink$Outcome, testProbs_Ksink$Probs),4),"for the Kitchen Sink model")
-paste("The area under the curve is:", round(pROC::auc(testProbs_honed$Outcome, testProbs_honed$Probs),4),"for the Honed model")
-```
 
 
-# Analysis of Costs & Benefits
+
+# 4. Analysis of Costs & Benefits
 
 To compare the improvements of our engineered model to the business-as-usual (BAU) case, we present a cost benefit analysis below. We compare the costs incurred by the Government, with the benefits, which are generally collected by both the homeowner and their surrounding neighbors. If the accrual of home values outweighs the costs of spending tax dollars on the marketing and deployment of the subsidy, then HCD should adopt this method of prediction. 
 
@@ -624,6 +647,9 @@ whichThreshold_revenue %>%
   kable_styling("striped", full_width = F)
 ```
 
+# 5. Conclusion
 
-# Appendix
+
+# 6. Appendix
 ### Citations
+1. [Public Policy Analytics, Steif K., 2021, accessed 2021-09-23](https://urbanspatial.github.io/PublicPolicyAnalytics/)
