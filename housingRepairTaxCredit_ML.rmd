@@ -1,5 +1,5 @@
 ---
-title: "People Based ML - Housing Repair Tax Credit"
+title: "Housing Repair Tax Credit - Clementi"
 author: "Johnathan Clementi"
 date: "11/5/2021"
 output: 
@@ -576,7 +576,7 @@ cost_benefit_table <-
        mutate(Net_Benefit_USD = case_when(Variable == "True_Positive"  ~ 58150 * Count,
                                        Variable == "True_Negative"  ~ 0 * Count,
                                        Variable == "False_Positive" ~ (-2850) * Count,
-                                       Variable == "False_Negative" ~ 61000 * Count
+                                       Variable == "False_Negative" ~ 0 * Count
                                       )
               ) %>%
       bind_cols(data.frame(Description = c("Predicted correctly homeowner would take the credit; allocated the marketing resources.",
@@ -599,7 +599,7 @@ whichThreshold <-
              case_when(Variable == "Count_TP"  ~ 58150 * Count,
                        Variable == "Count_TN"  ~ 0 * Count,
                        Variable == "Count_FP"  ~ (-2850) * Count,
-                       Variable == "Count_FN"  ~ 61000 * Count
+                       Variable == "Count_FN"  ~ 0 * Count
                        )
           )
 
@@ -644,11 +644,11 @@ whichThreshold_revenue %>%
   dplyr::select(Total_Revenue, Total_Count_of_Credits) %>% 
   cbind(data.frame(Model = c("OptimalThreshold", "50% Threshold")),.) %>% 
   kable() %>%
-  kable_styling("striped", full_width = F)
+  kable_styling()
 ```
 
 # 5. Conclusion
-
+Using a honed model gives HCD the ability to make better decisions with better outcomes than the business-as-usual case. I would recommend that HCD begin use of this model as soon as possible. Looking forward, as more data are collected, we will be able to refine the model further. Because HCD's efforts were relatively unsuccessful in the past, the available data make it harder to accurately predict whether an individual will take the tax credit. To ensure that the model's utility increases, I would recommend that this process is repeated each year with the complete dataset.
 
 # 6. Appendix
 ### Citations
